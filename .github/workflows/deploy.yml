@@ -19,6 +19,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # 确保 Pages 使用 GitHub Actions 产物，而不是从 main 分支根目录发布源码。
+      - name: Use GitHub Actions as Pages source
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          current=$(gh api "repos/${{ github.repository }}/pages" --jq .build_type 2>/dev/null || true)
+          if [ "$current" != "workflow" ]; then
+            gh api --method PUT "repos/${{ github.repository }}/pages" -f build_type=workflow \
+              || echo "::warning::无法自动切换 Pages 源，请在 Settings → Pages 中将 Source 设为 GitHub Actions。"
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
