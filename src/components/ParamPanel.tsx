@@ -86,10 +86,6 @@ function Icon({ name, className = '' }: { name: string; className?: string }) {
   return null;
 }
 
-function ProChip() {
-  return <span className="pro-chip">PRO</span>;
-}
-
 interface SliderRowProps {
   label: string;
   value: number;
@@ -147,19 +143,14 @@ function Toggle({
   checked,
   onChange,
   label,
-  pro,
 }: {
   checked: boolean;
   onChange: (value: boolean) => void;
   label: string;
-  pro?: boolean;
 }) {
   return (
     <div className="toggle-row">
-      <span className="toggle-label">
-        {label}
-        {pro ? <ProChip /> : null}
-      </span>
+      <span className="toggle-label">{label}</span>
       <button
         type="button"
         className={`switch ${checked ? 'is-on' : ''}`}
@@ -209,12 +200,17 @@ export function ParamPanel() {
   const setFillet = useAppStore((state) => state.setFillet);
   const setPartitionHeight = useAppStore((state) => state.setPartitionHeight);
   const setStackable = useAppStore((state) => state.setStackable);
+  const updateChamfer = useAppStore((state) => state.updateChamfer);
   const updateWall = useAppStore((state) => state.updateWall);
   const updateLabel = useAppStore((state) => state.updateLabel);
   const updateFingerPull = useAppStore((state) => state.updateFingerPull);
   const updateBox = useAppStore((state) => state.updateBox);
   const explode = useAppStore((state) => state.explode);
   const setExplode = useAppStore((state) => state.setExplode);
+  const chamferMax = Math.max(
+    LIMITS.chamfer[0],
+    Math.min(LIMITS.chamfer[1], params.thickness * 0.6),
+  );
 
   return (
     <aside className="panel">
@@ -311,10 +307,33 @@ export function ParamPanel() {
         </div>
       </div>
 
+      <div className={`panel-section ${params.chamfer.enabled ? '' : 'is-collapsed'}`}>
+        <Toggle
+          label="Chamfer"
+          checked={params.chamfer.enabled}
+          onChange={(enabled) => updateChamfer({ enabled })}
+        />
+        {params.chamfer.enabled ? (
+          <div className="sub-options">
+            <SliderRow
+              label="Chamfer Size"
+              value={params.chamfer.size}
+              min={LIMITS.chamfer[0]}
+              max={chamferMax}
+              step={0.1}
+              onChange={(size) => updateChamfer({ size })}
+              hint="托盘顶部外沿与 Finger Pull 取物口的 45° 倒角尺寸。"
+            />
+            <p className="field-note">
+              托盘顶部外沿、Finger Pull 缺口边缘均做 45° 倒角，去除锐边，避免划手。
+            </p>
+          </div>
+        ) : null}
+      </div>
+
       <div className={`panel-section ${params.wall.enabled ? '' : 'is-collapsed'}`}>
         <Toggle
           label="Wall Pattern"
-          pro
           checked={params.wall.enabled}
           onChange={(enabled) => updateWall({ enabled })}
         />
@@ -367,7 +386,6 @@ export function ParamPanel() {
       <div className={`panel-section ${params.label.enabled ? '' : 'is-collapsed'}`}>
         <Toggle
           label="Label"
-          pro
           checked={params.label.enabled}
           onChange={(enabled) => updateLabel({ enabled })}
         />
@@ -397,7 +415,6 @@ export function ParamPanel() {
       <div className={`panel-section ${params.fingerPull.enabled ? '' : 'is-collapsed'}`}>
         <Toggle
           label="Finger Pull"
-          pro
           checked={params.fingerPull.enabled}
           onChange={(enabled) => updateFingerPull({ enabled })}
         />

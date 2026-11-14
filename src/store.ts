@@ -6,6 +6,7 @@ import {
   clamp,
   type AppMode,
   type BoxOptions,
+  type ChamferOptions,
   type FingerPullOptions,
   type GridState,
   type LabelOptions,
@@ -59,6 +60,11 @@ const clampParams = (params: Params): Params => {
     LIMITS.fingerHeight[0],
     Math.min(LIMITS.fingerHeight[1], Math.max(7, height - 2)),
   );
+  const chamferSize = clamp(
+    params.chamfer.size,
+    LIMITS.chamfer[0],
+    Math.min(LIMITS.chamfer[1], Math.max(LIMITS.chamfer[0], thickness * 0.6)),
+  );
   return {
     ...params,
     width,
@@ -67,6 +73,7 @@ const clampParams = (params: Params): Params => {
     thickness,
     fillet,
     partitionHeight,
+    chamfer: { ...params.chamfer, size: chamferSize },
     wall: { ...params.wall, holeSize },
     fingerPull: { ...params.fingerPull, width: fingerWidth, height: fingerHeight },
     box: {
@@ -93,6 +100,7 @@ interface AppState {
   setFillet: (value: number) => void;
   setPartitionHeight: (value: number) => void;
   setStackable: (value: boolean) => void;
+  updateChamfer: (patch: Partial<ChamferOptions>) => void;
   updateWall: (patch: Partial<WallOptions>) => void;
   updateLabel: (patch: Partial<LabelOptions>) => void;
   updateFingerPull: (patch: Partial<FingerPullOptions>) => void;
@@ -147,6 +155,10 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({ params: clampParams({ ...state.params, partitionHeight: value }) })),
   setStackable: (value) =>
     set((state) => ({ params: clampParams({ ...state.params, stackable: value }) })),
+  updateChamfer: (patch) =>
+    set((state) => ({
+      params: clampParams({ ...state.params, chamfer: { ...state.params.chamfer, ...patch } }),
+    })),
   updateWall: (patch) =>
     set((state) => ({
       params: clampParams({ ...state.params, wall: { ...state.params.wall, ...patch } }),

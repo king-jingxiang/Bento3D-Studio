@@ -43,6 +43,11 @@ export interface BoxOptions {
   lid: boolean;
 }
 
+export interface ChamferOptions {
+  enabled: boolean;
+  size: number;
+}
+
 export interface Params {
   width: number;
   depth: number;
@@ -51,6 +56,7 @@ export interface Params {
   fillet: number;
   partitionHeight: number;
   stackable: boolean;
+  chamfer: ChamferOptions;
   wall: WallOptions;
   label: LabelOptions;
   fingerPull: FingerPullOptions;
@@ -103,6 +109,10 @@ export const DEFAULT_PARAMS: Params = {
   fillet: 2,
   partitionHeight: 16,
   stackable: false,
+  chamfer: {
+    enabled: false,
+    size: 0.8,
+  },
   wall: {
     enabled: false,
     shape: 'hexagon',
@@ -131,6 +141,7 @@ export const LIMITS = {
   height: [8, 120] as [number, number],
   thickness: [1, 5] as [number, number],
   fillet: [0, 8] as [number, number],
+  chamfer: [0.2, 2] as [number, number],
   partitionHeight: [4, 120] as [number, number],
   holeSize: [3, 12] as [number, number],
   labelWidth: [20, 120] as [number, number],

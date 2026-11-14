@@ -77,6 +77,12 @@ function sanitize(params: Params): { clean: CleanParams; warnings: string[] } {
   };
 }
 
+function chamferSize(params: Params, clean: CleanParams): number {
+  if (!params.chamfer.enabled) return 0;
+  const max = Math.max(LIMITS.chamfer[0], Math.min(LIMITS.chamfer[1], clean.thickness * 0.6));
+  return clamp(params.chamfer.size, 0.1, max);
+}
+
 function cellRadius(
   cell: { r0: number; c0: number; r1: number; c1: number; x1: number; x0: number; y1: number; y0: number },
   rows: number,
@@ -167,6 +173,7 @@ function buildWallHoles(
   params: Params,
   clean: CleanParams,
   label: LabelLayout | null,
+  chamfer: number,
 ): Solid[] {
   const { width, depth, height, thickness, fillet } = clean;
   if (!params.wall.enabled) return [];
@@ -195,9 +202,9 @@ function buildWallHoles(
 
   const fingerZone: Zone | null = params.fingerPull.enabled
     ? {
-        x0: -params.fingerPull.width / 2 - 1,
-        x1: params.fingerPull.width / 2 + 1,
-        z0: height - params.fingerPull.height - 1,
+        x0: -params.fingerPull.width / 2 - chamfer - 1,
+        x1: params.fingerPull.width / 2 + chamfer + 1,
+        z0: height - params.fingerPull.height - chamfer - 1,
         z1: height + 2,
       }
     : null;
@@ -277,22 +284,38 @@ function buildFingerPull(
   scope: WasmScope,
   params: Params,
   clean: CleanParams,
+  chamfer: number,
 ): Solid | null {
   if (!params.fingerPull.enabled) return null;
   const { width, depth, height, thickness } = clean;
   const notchWidth = clamp(params.fingerPull.width, 10, Math.max(12, width - 10));
   const notchHeight = clamp(params.fingerPull.height, 6, Math.max(7, height - 2));
   const radius = Math.min(4, notchHeight / 2 - 0.1, notchWidth / 2 - 0.1);
+  const bevel = clamp(chamfer, 0, Math.min(1.2, notchHeight / 3, notchWidth / 6));
+  // 缺口顶部额外高出 2 mm，保证切刀完全贯穿前壁并保持顶部开口。
   const shapeHeight = notchHeight + 2;
   const cs = scope.track(roundedRectCS(wasm, notchWidth, shapeHeight, radius, 8));
-  const moved = scope.track(cs.translate([0, shapeHeight / 2]));
   const depthOfCut = thickness + 2;
-  const solid = scope.track(moved.extrude(depthOfCut));
+  let cutter: Solid;
+  if (bevel > 0.05) {
+    // 中间保持名义尺寸，仅在内、外壁面处向外扩 bevel，形成 45° 倒角，避免缺口边缘划手。
+    const base = scope.track(cs.extrude(depthOfCut));
+    const growX = (notchWidth + 2 * bevel) / notchWidth;
+    const growY = (shapeHeight + 2 * bevel) / shapeHeight;
+    const flare = scope.track(cs.extrude(bevel, 1, 0, [growX, growY]));
+    const outerFlare = scope.track(flare.translate([0, 0, 1 + thickness - bevel]));
+    const innerFlare = scope.track(
+      scope.track(flare.rotate([180, 0, 0])).translate([0, 0, 1 + bevel]),
+    );
+    cutter = scope.track(wasm.Manifold.union([base, outerFlare, innerFlare]));
+  } else {
+    cutter = scope.track(cs.extrude(depthOfCut));
+  }
   return transformed(
     scope,
-    solid,
+    cutter,
     [90, 0, 0],
-    [0, -depth / 2 + thickness / 2 + depthOfCut / 2, height - notchHeight],
+    [0, -depth / 2 + thickness / 2 + depthOfCut / 2, height - notchHeight / 2 + 1],
   );
 }
 
@@ -342,7 +365,24 @@ function buildTray(
     const { width, depth, height, thickness, fillet, partitionHeight } = clean;
     const segments = Math.max(4, Math.min(14, Math.ceil(fillet * 3)));
     const outerCS = scope.track(roundedRectCS(wasm, width, depth, fillet, segments));
-    let solid = scope.track(outerCS.extrude(height));
+    const chamfer = chamferSize(params, clean);
+    const chamfered = chamfer > 0.05;
+    // 顶部按比例收窄，等价于外轮廓每边内缩 chamfer，形成 45° 斜边。
+    const chamferX = chamfered ? Math.max(0.5, (width - 2 * chamfer) / width) : 1;
+    const chamferY = chamfered ? Math.max(0.5, (depth - 2 * chamfer) / depth) : 1;
+    let solid: Solid;
+
+    if (chamfered && !params.stackable) {
+      const bodyHeight = Math.max(0.4, height - chamfer);
+      const body = scope.track(outerCS.extrude(bodyHeight));
+      const cap = scope.track(
+        outerCS.extrude(height - bodyHeight, 1, 0, [chamferX, chamferY]),
+      );
+      const capPlaced = scope.track(cap.translate([0, 0, bodyHeight]));
+      solid = scope.track(wasm.Manifold.union([body, capPlaced]));
+    } else {
+      solid = scope.track(outerCS.extrude(height));
+    }
 
     if (params.stackable) {
       const lipHeight = 1;
@@ -357,7 +397,10 @@ function buildTray(
         ),
       );
       const lipRingCS = scope.track(lipOuter.subtract(lipInner));
-      const lipSolid = scope.track(lipRingCS.extrude(lipHeight));
+      // 堆叠唇边位于最顶部，倒角因此落在唇边上沿。
+      const lipSolid = scope.track(
+        lipRingCS.extrude(lipHeight, 1, 0, [chamferX, chamferY]),
+      );
       const lip = scope.track(lipSolid.translate([0, 0, height]));
       solid = scope.track(wasm.Manifold.union([solid, lip]));
 
@@ -411,7 +454,7 @@ function buildTray(
 
     solid = subtractAll(scope, wasm, solid, [...cavities, upperCavity]);
 
-    const wallCutters = buildWallHoles(wasm, scope, params, clean, label);
+    const wallCutters = buildWallHoles(wasm, scope, params, clean, label, chamfer);
     if (params.wall.enabled && wallCutters.length === 0) {
       warnings.push('当前壁面尺寸无法容纳所选孔洞，已跳过墙面打孔。');
     }
@@ -435,7 +478,7 @@ function buildTray(
       }
     }
 
-    const fingerPull = buildFingerPull(wasm, scope, params, clean);
+    const fingerPull = buildFingerPull(wasm, scope, params, clean, chamfer);
     if (fingerPull) {
       try {
         solid = scope.track(solid.subtract(fingerPull));

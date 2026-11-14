@@ -436,19 +436,6 @@ button {
   color: var(--text-soft);
 }
 
-.pro-chip {
-  display: inline-flex;
-  align-items: center;
-  height: 14px;
-  padding: 0 4px;
-  border-radius: 3px;
-  background: #f4ecdd;
-  color: #9b6b1f;
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-
 .switch {
   position: relative;
   width: 56px;
