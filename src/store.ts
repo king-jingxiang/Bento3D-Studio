@@ -4,6 +4,7 @@ import {
   DEFAULT_ORGANIZER,
   DEFAULT_PARAMS,
   DEFAULT_ZONES,
+  DEFAULT_ZONES_GRID,
   LIMITS,
   clamp,
   isOutlineShape,
@@ -135,6 +136,8 @@ interface AppState {
   tab: ViewTab;
   params: Params;
   grid: GridState;
+  /** Independent partition layout for the integrated zones box. */
+  zonesGrid: GridState;
   organizer: OrganizerConfig;
   zones: ZonesConfig;
   activeLayerId: string;
@@ -187,7 +190,9 @@ function activeLayer(state: AppState): LayerConfig {
 }
 
 function currentGrid(state: AppState): GridState {
-  return state.mode === 'organizer' ? activeLayer(state).grid : state.grid;
+  if (state.mode === 'organizer') return activeLayer(state).grid;
+  if (state.mode === 'zones') return state.zonesGrid;
+  return state.grid;
 }
 
 function routeGrid(
@@ -209,6 +214,7 @@ function routeGrid(
       },
     };
   }
+  if (state.mode === 'zones') return { ...base, zonesGrid: grid };
   return { ...base, grid };
 }
 
@@ -219,6 +225,7 @@ export const useAppStore = create<AppState>((set) => ({
   tab: 'size',
   params: DEFAULT_PARAMS,
   grid: DEFAULT_GRID,
+  zonesGrid: sanitizeGrid(DEFAULT_ZONES_GRID),
   organizer: initialOrganizer,
   zones: sanitizeZones(DEFAULT_ZONES),
   activeLayerId: initialOrganizer.layers[0].id,
@@ -233,6 +240,7 @@ export const useAppStore = create<AppState>((set) => ({
       return {
         params: DEFAULT_PARAMS,
         grid: DEFAULT_GRID,
+        zonesGrid: sanitizeGrid(DEFAULT_ZONES_GRID),
         organizer,
         zones: sanitizeZones(DEFAULT_ZONES),
         activeLayerId: organizer.layers[0].id,
@@ -420,6 +428,7 @@ export const useAppStore = create<AppState>((set) => ({
         mode: config.mode,
         params: clampParams(config.params),
         grid: sanitizeGrid(config.grid),
+        zonesGrid: sanitizeGrid(config.zonesGrid),
         organizer,
         zones: sanitizeZones(config.zones),
         activeLayerId: organizer.layers[0].id,

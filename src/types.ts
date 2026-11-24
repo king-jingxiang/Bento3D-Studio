@@ -155,6 +155,13 @@ export const DEFAULT_GRID: GridState = {
   merges: [],
 };
 
+/** Default layout for the integrated zones box: three side-by-side zones. */
+export const DEFAULT_ZONES_GRID: GridState = {
+  cols: [1 / 3, 1 / 3, 1 / 3],
+  rows: [1],
+  merges: [],
+};
+
 export const DEFAULT_PARAMS: Params = {
   width: 100,
   depth: 100,

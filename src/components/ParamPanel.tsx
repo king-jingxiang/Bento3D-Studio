@@ -13,7 +13,7 @@ import {
   round,
 } from '../types';
 import type { HoleShape, LayerConfig, MarginPreset, OutlineShape, ZoneShape } from '../types';
-import { layoutCells, type LaidOutCell } from '../lib/grid';
+import { MAX_DIVISIONS, layoutCells, type LaidOutCell } from '../lib/grid';
 import { zoneAnchor, zoneStyleFor } from '../lib/zones';
 import { NumberInput } from './NumberInput';
 
@@ -406,11 +406,13 @@ function ZoneCard({ cell, index }: { cell: LaidOutCell; index: number }) {
 function ZonesPanel() {
   const params = useAppStore((state) => state.params);
   const zones = useAppStore((state) => state.zones);
-  const grid = useAppStore((state) => state.grid);
+  const grid = useAppStore((state) => state.zonesGrid);
   const setSize = useAppStore((state) => state.setSize);
   const setThickness = useAppStore((state) => state.setThickness);
   const setFillet = useAppStore((state) => state.setFillet);
   const updateZones = useAppStore((state) => state.updateZones);
+  const addGridColumn = useAppStore((state) => state.addGridColumn);
+  const removeGridColumnBoundary = useAppStore((state) => state.removeGridColumnBoundary);
 
   const cells = useMemo(
     () => layoutCells(grid, params.width, params.depth, params.thickness),
@@ -491,9 +493,29 @@ function ZonesPanel() {
       </div>
 
       <div className="panel-section">
-        <div className="section-title">
-          <Icon name="zones" className="icon" />
-          <span>分区（{cells.length}）</span>
+        <div className="section-title with-action">
+          <span className="section-title-text">
+            <Icon name="zones" className="icon" />
+            <span>分区（{cells.length}）</span>
+          </span>
+          <div className="zone-actions">
+            <button
+              type="button"
+              className="add-layer-button"
+              onClick={addGridColumn}
+              disabled={grid.cols.length >= MAX_DIVISIONS}
+            >
+              + 添加分区
+            </button>
+            <button
+              type="button"
+              className="add-layer-button"
+              onClick={() => removeGridColumnBoundary(grid.cols.length - 1)}
+              disabled={grid.cols.length <= 1}
+            >
+              − 删除分区
+            </button>
+          </div>
         </div>
         <div className="layer-list">
           {cells.map((cell, index) => (
@@ -501,7 +523,7 @@ function ZonesPanel() {
           ))}
         </div>
         <p className="field-note">
-          在“分区”视图中拖拽分隔线、框选合并可调整布局。圆形、椭圆、六边形内腔适合笔、
+          点击“添加分区”新增一列分区，“删除分区”移除最后一列分区。也可在“分区”视图中拖拽分隔线、框选合并。圆形、椭圆、六边形内腔适合笔、
           牙刷、化妆刷等竖放物品；当前最高分区 {round(totalHeight, 1)} mm。
         </p>
       </div>

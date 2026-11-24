@@ -15,6 +15,7 @@ export function GridEditor() {
   const mode = useAppStore((state) => state.mode);
   const params = useAppStore((state) => state.params);
   const globalGrid = useAppStore((state) => state.grid);
+  const zonesGrid = useAppStore((state) => state.zonesGrid);
   const organizer = useAppStore((state) => state.organizer);
   const zones = useAppStore((state) => state.zones);
   const activeLayerId = useAppStore((state) => state.activeLayerId);
@@ -38,7 +39,7 @@ export function GridEditor() {
   const activeLayer = layerIndex >= 0 ? organizer.layers[layerIndex] : organizer.layers[0];
   const isOrganizer = mode === 'organizer';
   const isZones = mode === 'zones';
-  const grid = isOrganizer ? activeLayer.grid : globalGrid;
+  const grid = isOrganizer ? activeLayer.grid : isZones ? zonesGrid : globalGrid;
   const shape = isOrganizer ? activeLayer.shape : isZones ? zones.outline : 'rounded';
 
   const width = params.width;
@@ -98,7 +99,13 @@ export function GridEditor() {
     if (!drag) return;
     const point = toLocal(event);
     if (!point) return;
-    const current = useAppStore.getState().grid;
+    const state = useAppStore.getState();
+    const current = isOrganizer
+      ? (state.organizer.layers.find((layer) => layer.id === state.activeLayerId) ??
+        state.organizer.layers[0]).grid
+      : isZones
+        ? state.zonesGrid
+        : state.grid;
     if (drag.axis === 'col') {
       const target = (point.x - innerX0) / innerW;
       setGrid({ ...current, cols: moveBoundary(current.cols, drag.index, target) });

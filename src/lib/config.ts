@@ -3,6 +3,7 @@ import {
   DEFAULT_ORGANIZER,
   DEFAULT_PARAMS,
   DEFAULT_ZONES,
+  DEFAULT_ZONES_GRID,
   LIMITS,
   clamp,
   isAppMode,
@@ -24,6 +25,7 @@ export interface BentoConfig {
   mode: AppMode;
   params: Params;
   grid: GridState;
+  zonesGrid: GridState;
   organizer: OrganizerConfig;
   zones: ZonesConfig;
 }
@@ -32,6 +34,7 @@ interface ConfigSource {
   mode: AppMode;
   params: Params;
   grid: GridState;
+  zonesGrid: GridState;
   organizer: OrganizerConfig;
   zones: ZonesConfig;
 }
@@ -218,6 +221,7 @@ export function normalizeConfig(input: unknown): { config: BentoConfig; warnings
         mode: 'organizer',
         params: cloneConfig(DEFAULT_PARAMS),
         grid: cloneConfig(DEFAULT_GRID),
+        zonesGrid: cloneConfig(DEFAULT_ZONES_GRID),
         organizer: cloneConfig(DEFAULT_ORGANIZER),
         zones: cloneConfig(DEFAULT_ZONES),
       },
@@ -247,6 +251,13 @@ export function normalizeConfig(input: unknown): { config: BentoConfig; warnings
       mode,
       params: normalizeParams(input.params),
       grid: sanitizeGrid(isRecord(input.grid) ? (input.grid as unknown as GridState) : DEFAULT_GRID),
+      zonesGrid: sanitizeGrid(
+        isRecord(input.zonesGrid)
+          ? (input.zonesGrid as unknown as GridState)
+          : mode === 'zones' && isRecord(input.grid)
+            ? (input.grid as unknown as GridState)
+            : DEFAULT_ZONES_GRID,
+      ),
       organizer: normalizeOrganizer(input.organizer, mode === 'organizer' ? warnings : []),
       zones: normalizeZones(input.zones),
     },
@@ -261,6 +272,7 @@ export function createConfig(source: ConfigSource): BentoConfig {
     mode: source.mode,
     params: cloneConfig(source.params),
     grid: cloneConfig(source.grid),
+    zonesGrid: cloneConfig(source.zonesGrid),
     organizer: cloneConfig(source.organizer),
     zones: cloneConfig(source.zones),
   };

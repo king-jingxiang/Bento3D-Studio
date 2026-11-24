@@ -724,6 +724,11 @@ button {
   cursor: not-allowed;
 }
 
+.zone-actions {
+  display: flex;
+  gap: 4px;
+}
+
 .layer-list {
   display: flex;
   flex-direction: column;

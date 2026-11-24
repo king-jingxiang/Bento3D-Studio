@@ -139,6 +139,7 @@ export default function App() {
   const setTab = useAppStore((state) => state.setTab);
   const params = useAppStore((state) => state.params);
   const grid = useAppStore((state) => state.grid);
+  const zonesGrid = useAppStore((state) => state.zonesGrid);
   const organizer = useAppStore((state) => state.organizer);
   const zones = useAppStore((state) => state.zones);
   const activeLayerId = useAppStore((state) => state.activeLayerId);
@@ -157,6 +158,7 @@ export default function App() {
 
   const isOrganizer = mode === 'organizer';
   const isZones = mode === 'zones';
+  const activeGrid = isZones ? zonesGrid : grid;
   const activeLayer =
     organizer.layers.find((layer) => layer.id === activeLayerId) ?? organizer.layers[0];
   const organizerHeight = organizer.layers.reduce((sum, layer) => sum + layer.height, 0);
@@ -169,8 +171,8 @@ export default function App() {
   }, []);
 
   const currentConfig = useMemo(
-    () => createConfig({ mode, params, grid, organizer, zones }),
-    [mode, params, grid, organizer, zones],
+    () => createConfig({ mode, params, grid, zonesGrid, organizer, zones }),
+    [mode, params, grid, zonesGrid, organizer, zones],
   );
 
   useEffect(() => {
@@ -199,7 +201,7 @@ export default function App() {
 
     const timer = window.setTimeout(async () => {
       try {
-        const next = await buildModel(params, grid, mode, organizer, zones);
+        const next = await buildModel(params, activeGrid, mode, organizer, zones);
         if (cancelled || generation.current !== id) return;
         setResult(next);
         if (next.warnings.length > 0) showToast(next.warnings[0]);
@@ -216,7 +218,7 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [params, grid, organizer, zones, mode, showToast]);
+  }, [params, activeGrid, organizer, zones, mode, showToast]);
 
   useEffect(
     () => () => {
@@ -229,7 +231,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const latest = await buildModel(params, grid, mode, organizer, zones);
+      const latest = await buildModel(params, activeGrid, mode, organizer, zones);
       setResult(latest);
       const exportParts = isZones
         ? split
