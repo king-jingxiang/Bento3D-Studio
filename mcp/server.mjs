@@ -60,6 +60,29 @@ const TOOLS = [
               },
               columns: { type: 'number', description: '列数 1-12，默认 1' },
               rows: { type: 'number', description: '行数 1-12，默认 1' },
+              stackable: {
+                type: 'boolean',
+                description:
+                  '该层是否可堆叠：顶部生成 1 mm 唇边、底部生成对应凹槽；建议相邻层同时开启，默认 false',
+              },
+              wall: {
+                type: 'object',
+                description: '该层独立的墙面花纹，默认关闭',
+                properties: {
+                  enabled: { type: 'boolean', description: '是否开启墙面花纹' },
+                  shape: {
+                    type: 'string',
+                    enum: ['hexagon', 'circle'],
+                    description: '孔洞形状，默认 hexagon',
+                  },
+                  holeSize: { type: 'number', description: '孔径 mm，3-12，默认 3' },
+                  margin: {
+                    type: 'string',
+                    enum: ['dense', 'normal', 'relaxed'],
+                    description: '孔距：密集/标准/宽松，默认 normal',
+                  },
+                },
+              },
               merges: {
                 type: 'array',
                 description:
@@ -162,6 +185,8 @@ const SCHEMA_DOC = {
   mode: 'tray | set | organizer | zones（分区一体盒）',
   unit: 'mm',
   coordinateNotes: 'layers 从下到上排列；靠后对齐时各层后沿对齐，深度逐层减小形成阶梯。',
+  layerNotes:
+    '每层可单独设置 stackable（顶部 1 mm 堆叠唇边 + 底部凹槽，建议相邻层同时开启）与 wall（该层独立墙面花纹：六边形/圆形孔、孔径、孔距）。',
   shapeEnum: OUTLINE_SHAPES.map((value) => ({ value, label: OUTLINE_LABELS[value] })),
   zoneShapeEnum: ZONE_SHAPES.map((value) => ({ value, label: ZONE_LABELS[value] })),
   limits: LIMITS,
@@ -227,6 +252,8 @@ const SCHEMA_DOC = {
           height: 30,
           shape: 'rounded',
           grid: { cols: [0.5, 0.5], rows: [0.5, 0.5], merges: [] },
+          stackable: true,
+          wall: { enabled: false, shape: 'hexagon', holeSize: 3, margin: 'normal' },
         },
       ],
     },

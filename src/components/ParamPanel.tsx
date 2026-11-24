@@ -14,6 +14,7 @@ import {
 } from '../types';
 import type { HoleShape, LayerConfig, MarginPreset, OutlineShape, ZoneShape } from '../types';
 import { MAX_DIVISIONS, layoutCells, type LaidOutCell } from '../lib/grid';
+import { organizerTotalHeight } from '../lib/organizer';
 import { zoneAnchor, zoneStyleFor } from '../lib/zones';
 import { NumberInput } from './NumberInput';
 
@@ -340,6 +341,74 @@ function OrganizerLayerCard({ layer, index }: { layer: LayerConfig; index: numbe
           </button>
         ))}
       </div>
+
+      <div className="layer-extra" onClick={stop}>
+        <Toggle
+          label="底部堆叠"
+          checked={layer.stackable}
+          onChange={(stackable) => updateOrganizerLayer(layer.id, { stackable })}
+        />
+        <p className="layer-hint">
+          顶部生成 1 mm 堆叠唇边，底部生成对应凹槽；相邻层同时开启即可上下互锁。
+        </p>
+        <Toggle
+          label="墙面花纹"
+          checked={layer.wall.enabled}
+          onChange={(enabled) =>
+            updateOrganizerLayer(layer.id, { wall: { ...layer.wall, enabled } })
+          }
+        />
+        {layer.wall.enabled ? (
+          <div className="sub-options layer-wall-options">
+            <span className="sub-label">孔洞形状</span>
+            <div className="shape-cards">
+              {(['hexagon', 'circle'] as HoleShape[]).map((shape) => (
+                <button
+                  key={shape}
+                  type="button"
+                  className={`shape-card ${layer.wall.shape === shape ? 'is-active' : ''}`}
+                  onClick={() =>
+                    updateOrganizerLayer(layer.id, { wall: { ...layer.wall, shape } })
+                  }
+                >
+                  <Icon name={shape === 'hexagon' ? 'hex' : 'circle'} className="shape-icon" />
+                  <span>{shape === 'hexagon' ? '六边形' : '圆形'}</span>
+                </button>
+              ))}
+            </div>
+            <SliderRow
+              label="孔径"
+              value={layer.wall.holeSize}
+              min={LIMITS.holeSize[0]}
+              max={LIMITS.holeSize[1]}
+              step={0.5}
+              onChange={(holeSize) =>
+                updateOrganizerLayer(layer.id, { wall: { ...layer.wall, holeSize } })
+              }
+              hint="孔洞的公称尺寸；过大会与上下边缘相交。"
+            />
+            <div className="field">
+              <div className="field-head">
+                <span className="field-label">孔距</span>
+              </div>
+              <Segment<MarginPreset>
+                value={layer.wall.margin}
+                onChange={(margin) =>
+                  updateOrganizerLayer(layer.id, { wall: { ...layer.wall, margin } })
+                }
+                options={[
+                  { value: 'dense', label: '密集' },
+                  { value: 'normal', label: '标准' },
+                  { value: 'relaxed', label: '宽松' },
+                ]}
+              />
+              <p className="field-note">
+                孔间距 {HOLE_MARGIN[layer.wall.margin]} mm，边缘留白 3 mm。
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -558,7 +627,7 @@ export function ParamPanel() {
     LIMITS.chamfer[0],
     Math.min(LIMITS.chamfer[1], params.thickness * 0.6),
   );
-  const totalHeight = organizer.layers.reduce((sum, layer) => sum + layer.height, 0);
+  const totalHeight = organizerTotalHeight(organizer.layers);
 
   return (
     <aside className="panel">

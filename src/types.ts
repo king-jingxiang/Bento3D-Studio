@@ -74,6 +74,10 @@ export interface LayerConfig {
   height: number;
   shape: OutlineShape;
   grid: GridState;
+  /** Adds a 1 mm stacking lip on top and a matching groove underneath. */
+  stackable: boolean;
+  /** Per-layer wall pattern. */
+  wall: WallOptions;
 }
 
 export interface OrganizerConfig {
@@ -247,34 +251,37 @@ function evenGridState(cols: number, rows: number): GridState {
   };
 }
 
+export const DEFAULT_LAYER_WALL: WallOptions = {
+  enabled: false,
+  shape: 'hexagon',
+  holeSize: 3,
+  margin: 'normal',
+};
+
+const defaultLayer = (
+  id: string,
+  depth: number,
+  height: number,
+  cols: number,
+  rows: number,
+): LayerConfig => ({
+  id,
+  name: `第 ${id.split('-')[1]} 层`,
+  depth,
+  height,
+  shape: 'rounded',
+  grid: evenGridState(cols, rows),
+  stackable: false,
+  wall: { ...DEFAULT_LAYER_WALL },
+});
+
 export const DEFAULT_ORGANIZER: OrganizerConfig = {
   align: 'back',
   dividerInset: 2,
   layers: [
-    {
-      id: 'layer-1',
-      name: '第 1 层',
-      depth: 130,
-      height: 30,
-      shape: 'rounded',
-      grid: evenGridState(2, 2),
-    },
-    {
-      id: 'layer-2',
-      name: '第 2 层',
-      depth: 95,
-      height: 24,
-      shape: 'rounded',
-      grid: evenGridState(3, 1),
-    },
-    {
-      id: 'layer-3',
-      name: '第 3 层',
-      depth: 60,
-      height: 20,
-      shape: 'rounded',
-      grid: evenGridState(1, 2),
-    },
+    defaultLayer('layer-1', 130, 30, 2, 2),
+    defaultLayer('layer-2', 95, 24, 3, 1),
+    defaultLayer('layer-3', 60, 20, 1, 2),
   ],
 };
 

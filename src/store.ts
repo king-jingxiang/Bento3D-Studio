@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   DEFAULT_GRID,
+  DEFAULT_LAYER_WALL,
   DEFAULT_ORGANIZER,
   DEFAULT_PARAMS,
   DEFAULT_ZONES,
@@ -102,6 +103,20 @@ const clampLayer = (layer: LayerConfig): LayerConfig => ({
   height: clamp(layer.height, LIMITS.layerHeight[0], LIMITS.layerHeight[1]),
   shape: isOutlineShape(layer.shape) ? layer.shape : 'rounded',
   grid: sanitizeGrid(layer.grid),
+  stackable: layer.stackable === true,
+  wall: {
+    enabled: layer.wall?.enabled === true,
+    shape: layer.wall?.shape === 'circle' ? 'circle' : 'hexagon',
+    holeSize: clamp(
+      Number(layer.wall?.holeSize) || DEFAULT_LAYER_WALL.holeSize,
+      LIMITS.holeSize[0],
+      LIMITS.holeSize[1],
+    ),
+    margin:
+      layer.wall?.margin === 'dense' || layer.wall?.margin === 'relaxed'
+        ? layer.wall.margin
+        : 'normal',
+  },
 });
 
 /** Shift zone anchors when a grid divider is removed (cells right of it collapse left). */
@@ -172,7 +187,9 @@ interface AppState {
   moveOrganizerLayer: (id: string, direction: -1 | 1) => void;
   updateOrganizerLayer: (
     id: string,
-    patch: Partial<Pick<LayerConfig, 'name' | 'depth' | 'height' | 'shape' | 'grid'>>,
+    patch: Partial<
+      Pick<LayerConfig, 'name' | 'depth' | 'height' | 'shape' | 'grid' | 'stackable' | 'wall'>
+    >,
   ) => void;
   updateOrganizer: (patch: Partial<Pick<OrganizerConfig, 'align' | 'dividerInset'>>) => void;
   updateZones: (
@@ -352,6 +369,8 @@ export const useAppStore = create<AppState>((set) => ({
         height: last?.height ?? 24,
         shape: last?.shape ?? 'rounded',
         grid: evenGrid(1, 1),
+        stackable: last?.stackable ?? false,
+        wall: { ...(last?.wall ?? DEFAULT_LAYER_WALL) },
       });
       return {
         organizer: { ...state.organizer, layers: [...layers, layer] },

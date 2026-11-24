@@ -6,6 +6,7 @@ import { Viewport } from './components/Viewport';
 import { GridEditor } from './components/GridEditor';
 import { NumberInput } from './components/NumberInput';
 import { buildModel } from './lib/geometry';
+import { organizerTotalHeight } from './lib/organizer';
 import { download3mf } from './lib/export3mf';
 import {
   buildShareUrl,
@@ -161,7 +162,7 @@ export default function App() {
   const activeGrid = isZones ? zonesGrid : grid;
   const activeLayer =
     organizer.layers.find((layer) => layer.id === activeLayerId) ?? organizer.layers[0];
-  const organizerHeight = organizer.layers.reduce((sum, layer) => sum + layer.height, 0);
+  const organizerHeight = organizerTotalHeight(organizer.layers);
   const organizerDepth = organizer.layers.reduce((max, layer) => Math.max(max, layer.depth), 0);
 
   const showToast = useCallback((message: string) => {

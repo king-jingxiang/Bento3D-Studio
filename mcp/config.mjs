@@ -55,6 +55,8 @@ export const DEFAULT_PARAMS = {
   box: { trayCount: 1, clearance: 0.4, lid: true },
 };
 
+export const DEFAULT_LAYER_WALL = { enabled: false, shape: 'hexagon', holeSize: 3, margin: 'normal' };
+
 export const DEFAULT_GRID = {
   cols: [0.5, 0.5],
   rows: [0.5, 0.5],
@@ -178,6 +180,23 @@ export function normalizeParams(raw) {
   };
 }
 
+function normalizeLayerWall(raw) {
+  const source = isRecord(raw) ? raw : {};
+  const d = DEFAULT_LAYER_WALL;
+  return {
+    enabled: typeof source.enabled === 'boolean' ? source.enabled : d.enabled,
+    shape: source.shape === 'circle' ? 'circle' : source.shape === 'hexagon' ? 'hexagon' : d.shape,
+    holeSize: clamp(
+      typeof source.holeSize === 'number' && Number.isFinite(source.holeSize)
+        ? source.holeSize
+        : d.holeSize,
+      3,
+      12,
+    ),
+    margin: ['dense', 'normal', 'relaxed'].includes(source.margin) ? source.margin : d.margin,
+  };
+}
+
 export function normalizeOrganizer(raw, warnings = []) {
   if (!isRecord(raw) || !Array.isArray(raw.layers) || raw.layers.length === 0) {
     warnings.push('缺少 organizer.layers，已生成一个默认收纳层。');
@@ -213,6 +232,8 @@ export function normalizeOrganizer(raw, warnings = []) {
       ),
       shape: OUTLINE_SHAPES.includes(source.shape) ? source.shape : 'rounded',
       grid: sanitizeGrid(source.grid ?? evenGrid(1, 1)),
+      stackable: source.stackable === true,
+      wall: normalizeLayerWall(source.wall),
     };
   });
 
@@ -237,6 +258,8 @@ export function defaultOrganizer() {
     height,
     shape,
     grid: evenGrid(columns, rows),
+    stackable: false,
+    wall: { ...DEFAULT_LAYER_WALL },
   });
   return {
     align: 'back',
@@ -330,6 +353,16 @@ export function normalizeConfig(raw) {
   };
 }
 
+function layerWallFromInput(item) {
+  if (isRecord(item.wall)) return normalizeLayerWall(item.wall);
+  return normalizeLayerWall({
+    enabled: typeof item.wallEnabled === 'boolean' ? item.wallEnabled : item.wallPattern,
+    shape: item.wallShape,
+    holeSize: item.wallHoleSize,
+    margin: item.wallMargin,
+  });
+}
+
 export function configFromOrganizerInput(input) {
   const source = isRecord(input) ? input : {};
   const warnings = [];
@@ -379,6 +412,8 @@ export function configFromOrganizerInput(input) {
       ),
       shape: OUTLINE_SHAPES.includes(item.shape) ? item.shape : 'rounded',
       grid,
+      stackable: item.stackable === true,
+      wall: layerWallFromInput(item),
     };
   });
 
@@ -518,7 +553,9 @@ export function summarizeConfig(config) {
   }
 
   const layers = config.organizer.layers;
-  const totalHeight = layers.reduce((sum, layer) => sum + layer.height, 0);
+  const totalHeight =
+    layers.reduce((sum, layer) => sum + layer.height, 0) +
+    (layers[layers.length - 1]?.stackable ? 1 : 0);
   const maxDepth = layers.reduce((max, layer) => Math.max(max, layer.depth), 0);
   const lines = [
     `多层收纳盒：宽 ${round(config.params.width)} mm，共 ${layers.length} 层，总高 ${round(
@@ -526,12 +563,18 @@ export function summarizeConfig(config) {
     )} mm，最深 ${round(maxDepth)} mm。`,
   ];
   layers.forEach((layer, index) => {
+    const extras = [
+      layer.stackable ? '可堆叠' : '',
+      layer.wall?.enabled ? `墙面${layer.wall.shape === 'circle' ? '圆形' : '六边形'}孔` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
     lines.push(
       `第 ${index + 1} 层「${layer.name}」 ${round(layer.depth)}×${round(
         layer.height,
       )} mm · ${OUTLINE_LABELS[layer.shape]} · ${layer.grid.cols.length}×${
         layer.grid.rows.length
-      } 格`,
+      } 格${extras ? ` · ${extras}` : ''}`,
     );
   });
   return lines.join('\n');

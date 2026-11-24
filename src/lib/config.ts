@@ -1,5 +1,6 @@
 import {
   DEFAULT_GRID,
+  DEFAULT_LAYER_WALL,
   DEFAULT_ORGANIZER,
   DEFAULT_PARAMS,
   DEFAULT_ZONES,
@@ -14,6 +15,7 @@ import {
   type LayerConfig,
   type OrganizerConfig,
   type Params,
+  type WallOptions,
   type ZoneStyle,
   type ZonesConfig,
 } from '../types';
@@ -47,6 +49,21 @@ const num = (value: unknown, fallback: number, min: number, max: number): number
 
 const bool = (value: unknown, fallback: boolean): boolean =>
   typeof value === 'boolean' ? value : fallback;
+
+function normalizeLayerWall(input: unknown): WallOptions {
+  const source = isRecord(input) ? input : {};
+  const d = DEFAULT_LAYER_WALL;
+  return {
+    enabled: bool(source.enabled, d.enabled),
+    shape:
+      source.shape === 'circle' ? 'circle' : source.shape === 'hexagon' ? 'hexagon' : d.shape,
+    holeSize: num(source.holeSize, d.holeSize, LIMITS.holeSize[0], LIMITS.holeSize[1]),
+    margin:
+      source.margin === 'dense' || source.margin === 'relaxed' || source.margin === 'normal'
+        ? source.margin
+        : d.margin,
+  };
+}
 
 export function cloneConfig<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -158,6 +175,8 @@ export function normalizeOrganizer(input: unknown, warnings: string[] = []): Org
       height: num(source.height, 24, LIMITS.layerHeight[0], LIMITS.layerHeight[1]),
       shape: isOutlineShape(source.shape) ? source.shape : 'rounded',
       grid: sanitizeGrid(isRecord(source.grid) ? (source.grid as unknown as GridState) : DEFAULT_GRID),
+      stackable: bool(source.stackable, false),
+      wall: normalizeLayerWall(source.wall),
     };
   });
 

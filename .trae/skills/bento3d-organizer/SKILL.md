@@ -115,6 +115,8 @@ MCP 客户端配置示例（Trae / Claude Desktop 等）：
 - `shape`：`rect` / `rounded` / `ellipse` / `hexagon` / `octagon` / `capsule`
 - `columns`、`rows`：分格数 1–12
 - `merges`：可选合并区域，索引从 0 开始，如 `[{ "r0": 0, "c0": 0, "r1": 0, "c1": 1 }]`
+- `stackable`：该层是否可堆叠，默认 `false`。开启后顶部生成 1 mm 唇边、底部生成对应凹槽；相邻层建议同时开启才能互锁。
+- `wall`：该层独立的墙面花纹，`{ "enabled", "shape": "hexagon|circle", "holeSize", "margin": "dense|normal|relaxed" }`，默认关闭。
 
 调用示例：
 
@@ -125,12 +127,17 @@ MCP 客户端配置示例（Trae / Claude Desktop 等）：
   "fillet": 4,
   "align": "back",
   "layers": [
-    { "name": "底层", "depth": 140, "height": 32, "shape": "rounded", "columns": 2, "rows": 2 },
-    { "name": "中层", "depth": 100, "height": 24, "shape": "hexagon", "columns": 3, "rows": 1 },
-    { "name": "顶层", "depth": 60, "height": 18, "shape": "capsule", "columns": 1, "rows": 2 }
+    { "name": "底层", "depth": 140, "height": 32, "shape": "rounded", "columns": 2, "rows": 2,
+      "stackable": true, "wall": { "enabled": false } },
+    { "name": "中层", "depth": 100, "height": 24, "shape": "hexagon", "columns": 3, "rows": 1,
+      "stackable": true, "wall": { "enabled": true, "shape": "hexagon", "holeSize": 3 } },
+    { "name": "顶层", "depth": 60, "height": 18, "shape": "capsule", "columns": 1, "rows": 2,
+      "stackable": true, "wall": { "enabled": true, "shape": "circle", "holeSize": 4, "margin": "relaxed" } }
   ]
 }
 ```
+
+相邻层都开启 `stackable` 时，各层通过顶部唇边与底部凹槽上下互锁；总高度为各层高度之和，再加最上层唇边的 1 mm。
 
 ## 设计建议
 
@@ -138,6 +145,8 @@ MCP 客户端配置示例（Trae / Claude Desktop 等）：
 - 任何一层的格子小于 3 mm 都不适合打印，减少行列数或增大宽度。
 - 外形为椭圆 / 六边形 / 八边形 / 胶囊形时，分格会被外形边界裁剪，靠边格子实际更小。
 - 每层是独立实体，可分别打印后叠放；宽度共用，深度和高度逐层可调。
+- 需要稳定叠放时给相邻层都开启 `stackable`；只开启单层会缺少对应的唇边或凹槽，工具会提示干涉。
+- 墙面花纹按层独立设置，底层/中层/顶层可用不同孔形、孔径和孔距；椭圆外形没有平直墙面，会自动跳过打孔。
 - 分区一体盒始终导出为一个整体实体；网页顶部另有「导出分区」按钮，可把每个分区导出为独立对象，便于分开打印或换色。
 - 分区高度可各不相同；相邻分区共用隔板，隔板高度取较高一侧。
 - 圆形内腔按单元格短边内切，格子越接近正方形越像正圆；长条物品选胶囊形。
@@ -164,7 +173,9 @@ MCP 客户端配置示例（Trae / Claude Desktop 等）：
         "depth": 130,
         "height": 30,
         "shape": "rounded",
-        "grid": { "cols": [0.5, 0.5], "rows": [0.5, 0.5], "merges": [] }
+        "grid": { "cols": [0.5, 0.5], "rows": [0.5, 0.5], "merges": [] },
+        "stackable": false,
+        "wall": { "enabled": false, "shape": "hexagon", "holeSize": 3, "margin": "normal" }
       }
     ]
   },
