@@ -1,8 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useAppStore } from '../store';
 import { cumulative, layoutCells, moveBoundary } from '../lib/grid';
-import { round } from '../types';
+import { outlinePath } from '../lib/shapes';
+import { zoneStyleFor } from '../lib/zones';
+import { OUTLINE_SHAPE_LABELS, ZONE_SHAPE_LABELS, round } from '../types';
 
 interface DragState {
   axis: 'col' | 'row';
@@ -10,8 +12,12 @@ interface DragState {
 }
 
 export function GridEditor() {
+  const mode = useAppStore((state) => state.mode);
   const params = useAppStore((state) => state.params);
-  const grid = useAppStore((state) => state.grid);
+  const globalGrid = useAppStore((state) => state.grid);
+  const organizer = useAppStore((state) => state.organizer);
+  const zones = useAppStore((state) => state.zones);
+  const activeLayerId = useAppStore((state) => state.activeLayerId);
   const selected = useAppStore((state) => state.selectedCells);
   const setSelectedCells = useAppStore((state) => state.setSelectedCells);
   const setGrid = useAppStore((state) => state.setGrid);
@@ -26,8 +32,18 @@ export function GridEditor() {
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [dragging, setDragging] = useState<DragState | null>(null);
+  const clipId = useId().replace(/:/g, '');
 
-  const { width, depth, thickness, fillet } = params;
+  const layerIndex = organizer.layers.findIndex((layer) => layer.id === activeLayerId);
+  const activeLayer = layerIndex >= 0 ? organizer.layers[layerIndex] : organizer.layers[0];
+  const isOrganizer = mode === 'organizer';
+  const isZones = mode === 'zones';
+  const grid = isOrganizer ? activeLayer.grid : globalGrid;
+  const shape = isOrganizer ? activeLayer.shape : isZones ? zones.outline : 'rounded';
+
+  const width = params.width;
+  const depth = isOrganizer ? activeLayer.depth : params.depth;
+  const { thickness, fillet } = params;
   const pad = Math.max(8, Math.min(width, depth) * 0.07);
   const viewBox = {
     x: -width / 2 - pad,
@@ -35,6 +51,13 @@ export function GridEditor() {
     w: width + pad * 2,
     h: depth + pad * 2,
   };
+  const outerPath = outlinePath(shape, width, depth, fillet);
+  const innerPath = outlinePath(
+    shape,
+    Math.max(2, width - thickness * 2),
+    Math.max(2, depth - thickness * 2),
+    Math.max(0.2, fillet - thickness),
+  );
 
   const cells = useMemo(
     () => layoutCells(grid, width, depth, thickness),
@@ -125,9 +148,19 @@ export function GridEditor() {
     <div className="grid-card">
       <div className="grid-card-head">
         <div>
-          <h2>Grid Layout</h2>
+          <h2>{isOrganizer ? `分区布局 · ${activeLayer.name}` : '分区布局'}</h2>
           <p>
-            {grid.cols.length} 列 × {grid.rows.length} 行 · 拖拽分隔线调整 · 双击删除分隔线
+            {isOrganizer
+              ? `${OUTLINE_SHAPE_LABELS[shape]} · 深度 ${round(depth, 1)} × 高 ${round(
+                  activeLayer.height,
+                  1,
+                )} mm · ${grid.cols.length} 列 × ${grid.rows.length} 行`
+              : isZones
+                ? `${OUTLINE_SHAPE_LABELS[shape]} · ${round(width, 0)} × ${round(
+                    depth,
+                    0,
+                  )} mm · ${cells.length} 个分区`
+                : `${grid.cols.length} 列 × ${grid.rows.length} 行 · 拖拽分隔线调整 · 双击删除分隔线`}
           </p>
         </div>
         <div className="grid-actions">
@@ -160,16 +193,16 @@ export function GridEditor() {
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
         >
-          <rect
-            x={-width / 2}
-            y={-depth / 2}
-            width={width}
-            height={depth}
-            rx={fillet}
-            className="grid-outline"
-          />
+          <defs>
+            <clipPath id={clipId}>
+              <path d={innerPath} />
+            </clipPath>
+          </defs>
+          <path d={outerPath} className="grid-outline" />
+          <g clipPath={`url(#${clipId})`}>
           {cells.map((cell) => {
             const isSelected = selected.includes(cell.id);
+            const zoneStyle = isZones ? zoneStyleFor(cell, zones) : null;
             return (
               <g key={cell.id}>
                 <rect
@@ -178,9 +211,20 @@ export function GridEditor() {
                   width={Math.max(0.1, cell.x1 - cell.x0)}
                   height={Math.max(0.1, cell.y1 - cell.y0)}
                   rx={1}
-                  className={`grid-cell ${isSelected ? 'is-selected' : ''}`}
+                  className={`grid-cell ${isSelected ? 'is-selected' : ''} ${
+                    zoneStyle ? `is-zone-${zoneStyle.shape}` : ''
+                  }`}
                   onClick={(event) => handleCellClick(event, cell.id)}
-                />
+                >
+                  {zoneStyle ? (
+                    <title>
+                      {`${ZONE_SHAPE_LABELS[zoneStyle.shape]} · 高 ${round(
+                        zoneStyle.height,
+                        0,
+                      )} mm`}
+                    </title>
+                  ) : null}
+                </rect>
                 {cell.x1 - cell.x0 > 16 && cell.y1 - cell.y0 > 10 ? (
                   <text
                     x={(cell.x0 + cell.x1) / 2}
@@ -258,13 +302,14 @@ export function GridEditor() {
               </g>
             );
           })}
+          </g>
           <text
             x={0}
             y={depth / 2 + pad * 0.55}
             className="grid-axis-label"
             textAnchor="middle"
           >
-            FRONT · {round(width, 0)} mm
+            前 · {round(width, 0)} mm
           </text>
         </svg>
       </div>

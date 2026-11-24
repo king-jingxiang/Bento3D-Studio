@@ -7,6 +7,13 @@ import { GridEditor } from './components/GridEditor';
 import { NumberInput } from './components/NumberInput';
 import { buildModel } from './lib/geometry';
 import { download3mf } from './lib/export3mf';
+import {
+  buildShareUrl,
+  createConfig,
+  downloadConfig,
+  normalizeConfig,
+  readConfigFromLocation,
+} from './lib/config';
 import type { BuildResult, ViewTab } from './types';
 import { round } from './types';
 
@@ -91,7 +98,7 @@ function DimensionHandle({ label, value, onChange, position }: DimensionHandlePr
         type="button"
         className="dim-arrow"
         onClick={() => onChange(value - 1)}
-        aria-label={`减小 ${label}`}
+        aria-label={`减小${label}`}
       >
         ‹
       </button>
@@ -112,7 +119,7 @@ function DimensionHandle({ label, value, onChange, position }: DimensionHandlePr
         type="button"
         className="dim-arrow"
         onClick={() => onChange(value + 1)}
-        aria-label={`增大 ${label}`}
+        aria-label={`增大${label}`}
       >
         ›
       </button>
@@ -121,9 +128,9 @@ function DimensionHandle({ label, value, onChange, position }: DimensionHandlePr
 }
 
 const tabs: { value: ViewTab; label: string; icon: () => ReactNode }[] = [
-  { value: 'size', label: 'Size', icon: SizeIcon },
-  { value: 'grid', label: 'Grid', icon: GridIcon },
-  { value: 'preview', label: 'Preview', icon: PreviewIcon },
+  { value: 'size', label: '尺寸', icon: SizeIcon },
+  { value: 'grid', label: '分区', icon: GridIcon },
+  { value: 'preview', label: '预览', icon: PreviewIcon },
 ];
 
 export default function App() {
@@ -132,6 +139,11 @@ export default function App() {
   const setTab = useAppStore((state) => state.setTab);
   const params = useAppStore((state) => state.params);
   const grid = useAppStore((state) => state.grid);
+  const organizer = useAppStore((state) => state.organizer);
+  const zones = useAppStore((state) => state.zones);
+  const activeLayerId = useAppStore((state) => state.activeLayerId);
+  const updateOrganizerLayer = useAppStore((state) => state.updateOrganizerLayer);
+  const applyConfig = useAppStore((state) => state.applyConfig);
   const setSize = useAppStore((state) => state.setSize);
   const explode = useAppStore((state) => state.explode);
 
@@ -141,12 +153,42 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const generation = useRef(0);
   const toastTimer = useRef<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isOrganizer = mode === 'organizer';
+  const isZones = mode === 'zones';
+  const activeLayer =
+    organizer.layers.find((layer) => layer.id === activeLayerId) ?? organizer.layers[0];
+  const organizerHeight = organizer.layers.reduce((sum, layer) => sum + layer.height, 0);
+  const organizerDepth = organizer.layers.reduce((max, layer) => Math.max(max, layer.depth), 0);
 
   const showToast = useCallback((message: string) => {
     setToast(message);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 6500);
   }, []);
+
+  const currentConfig = useMemo(
+    () => createConfig({ mode, params, grid, organizer, zones }),
+    [mode, params, grid, organizer, zones],
+  );
+
+  useEffect(() => {
+    const loaded = readConfigFromLocation();
+    if (loaded) {
+      applyConfig(loaded);
+      showToast('已从分享链接载入配置。');
+    }
+    const onHashChange = () => {
+      const next = readConfigFromLocation();
+      if (next) {
+        applyConfig(next);
+        showToast('已从分享链接载入配置。');
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [applyConfig, showToast]);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,7 +199,7 @@ export default function App() {
 
     const timer = window.setTimeout(async () => {
       try {
-        const next = await buildModel(params, grid, mode);
+        const next = await buildModel(params, grid, mode, organizer, zones);
         if (cancelled || generation.current !== id) return;
         setResult(next);
         if (next.warnings.length > 0) showToast(next.warnings[0]);
@@ -174,7 +216,7 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [params, grid, mode, showToast]);
+  }, [params, grid, organizer, zones, mode, showToast]);
 
   useEffect(
     () => () => {
@@ -183,25 +225,53 @@ export default function App() {
     [],
   );
 
-  const handleDownload = async () => {
+  const handleDownload = async (split = false) => {
     setBusy(true);
     setError(null);
     try {
-      const latest = await buildModel(params, grid, mode);
+      const latest = await buildModel(params, grid, mode, organizer, zones);
       setResult(latest);
-      if (latest.parts.length === 0) {
+      const exportParts = isZones
+        ? split
+          ? latest.zoneParts
+          : latest.zoneBody
+            ? [latest.zoneBody]
+            : []
+        : latest.parts;
+      if (exportParts.length === 0) {
         throw new Error('没有可导出的几何体');
       }
-      const dimensions = `W${round(params.width, 1)}xD${round(params.depth, 1)}xH${round(
-        params.height + (params.stackable ? 1 : 0),
-        1,
-      )}`;
-      const prefix = mode === 'set' ? 'bento3d-set' : 'bento3d-tray';
-      download3mf(latest.parts, `${prefix}-${dimensions}.3mf`, `Bento3D ${dimensions}mm`);
+      const dimensions = isZones
+        ? `W${round(params.width, 1)}xD${round(params.depth, 1)}xH${round(
+            latest.zonesTotalHeight,
+            1,
+          )}`
+        : isOrganizer
+          ? `W${round(params.width, 1)}xD${round(organizerDepth, 1)}xH${round(organizerHeight, 1)}`
+          : `W${round(params.width, 1)}xD${round(params.depth, 1)}xH${round(
+              params.height + (params.stackable ? 1 : 0),
+              1,
+            )}`;
+      const prefix = isZones
+        ? split
+          ? 'bento3d-zones-parts'
+          : 'bento3d-zones'
+        : isOrganizer
+          ? 'bento3d-organizer'
+          : mode === 'set'
+            ? 'bento3d-set'
+            : 'bento3d-tray';
+      download3mf(exportParts, `${prefix}-${dimensions}.3mf`, `Bento3D ${dimensions}mm`);
       showToast(
-        mode === 'set'
-          ? '已导出托盘 + 收纳盒 + 盖子，共 3 个对象。'
-          : '已导出托盘 3MF 文件。',
+        isZones
+          ? split
+            ? `已导出 ${exportParts.length} 个分区，可在切片软件中分别摆放打印。`
+            : '已导出一体成型的分区收纳盒。'
+          : isOrganizer
+            ? `已导出 ${latest.parts.length} 层收纳盒，共 ${latest.parts.length} 个对象。`
+            : mode === 'set'
+              ? '已导出托盘 + 收纳盒 + 盖子，共 3 个对象。'
+              : '已导出托盘 3MF 文件。',
       );
     } catch (downloadError) {
       console.error(downloadError);
@@ -211,15 +281,60 @@ export default function App() {
     }
   };
 
+  const handleExportConfig = () => {
+    downloadConfig(currentConfig, `bento3d-${mode}-config.json`);
+    showToast('配置文件已下载，可再次导入或交给大模型继续编辑。');
+  };
+
+  const handleImportFile = async (file: File) => {
+    try {
+      const parsed = JSON.parse(await file.text());
+      const { config, warnings } = normalizeConfig(parsed);
+      applyConfig(config);
+      showToast(
+        warnings.length > 0 ? `已导入配置：${warnings[0]}` : '配置已导入，可继续在界面中编辑。',
+      );
+    } catch (importError) {
+      console.error(importError);
+      setError('配置文件解析失败，请确认是 Bento3D 导出的 JSON。');
+    }
+  };
+
+  const handleShare = async () => {
+    const url = buildShareUrl(currentConfig);
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('分享链接已复制，打开链接即可载入当前模型。');
+    } catch {
+      window.prompt('复制下面的分享链接：', url);
+    }
+    window.history.replaceState(null, '', url.slice(Math.max(0, url.indexOf('#'))));
+  };
+
   const boxSummary = useMemo(() => {
     if (mode !== 'set' || !result?.box) return null;
-    return `Box ${round(result.box.width, 1)} × ${round(result.box.depth, 1)} × ${round(
+    return `收纳盒 ${round(result.box.width, 1)} × ${round(result.box.depth, 1)} × ${round(
       result.box.height,
       1,
     )} mm`;
   }, [mode, result]);
 
-  const trayHeight = result?.tray?.height ?? params.height + (params.stackable ? 1 : 0);
+  const trayHeight = isZones
+    ? (result?.zonesTotalHeight ?? zones.defaultHeight)
+    : isOrganizer
+      ? organizerHeight
+      : (result?.tray?.height ?? params.height + (params.stackable ? 1 : 0));
+
+  const depthValue = isOrganizer ? activeLayer.depth : params.depth;
+  const heightValue = isOrganizer ? activeLayer.height : params.height;
+  const changeDepth = (value: number) => {
+    if (isOrganizer) updateOrganizerLayer(activeLayer.id, { depth: value });
+    else setSize('depth', value);
+  };
+  const changeHeight = (value: number) => {
+    if (isOrganizer) updateOrganizerLayer(activeLayer.id, { height: value });
+    else setSize('height', value);
+  };
 
   return (
     <div className="app">
@@ -228,7 +343,7 @@ export default function App() {
           <BrandIcon />
           <span className="brand-name">Bento3D</span>
           <span className="brand-divider">|</span>
-          <span className="brand-title">参数化托盘生成器</span>
+          <span className="brand-title">参数化收纳生成器</span>
           <span className="brand-tag">复刻版</span>
         </div>
 
@@ -249,9 +364,40 @@ export default function App() {
         </nav>
 
         <div className="top-actions">
-          <button type="button" className="export-button" onClick={handleDownload} disabled={busy}>
+          <label className="secondary-button" title="导入 JSON 配置">
+            <span>导入</span>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="config-file-input"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleImportFile(file);
+                event.target.value = '';
+              }}
+            />
+          </label>
+          <button type="button" className="secondary-button" onClick={handleExportConfig} title="导出 JSON 配置">
+            <span>导出配置</span>
+          </button>
+          <button type="button" className="secondary-button" onClick={handleShare} title="复制带配置的分享链接">
+            <span>复制链接</span>
+          </button>
+          {isZones ? (
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => handleDownload(true)}
+              disabled={busy}
+              title="每个分区导出为一个独立对象，便于分开打印"
+            >
+              <span>导出分区</span>
+            </button>
+          ) : null}
+          <button type="button" className="export-button" onClick={() => handleDownload(false)} disabled={busy}>
             <DownloadIcon />
-            <span>{busy ? '生成中…' : 'Download 3MF'}</span>
+            <span>{busy ? '生成中…' : '导出 3MF'}</span>
           </button>
         </div>
       </header>
@@ -271,19 +417,21 @@ export default function App() {
           {tab === 'size' ? (
             <>
               <DimensionHandle
-                label="Depth"
-                value={params.depth}
+                label={isOrganizer ? `第 ${organizer.layers.indexOf(activeLayer) + 1} 层深度` : '深度'}
+                value={depthValue}
                 position="left"
-                onChange={(value) => setSize('depth', value)}
+                onChange={changeDepth}
               />
+              {!isZones ? (
+                <DimensionHandle
+                  label={isOrganizer ? `第 ${organizer.layers.indexOf(activeLayer) + 1} 层高度` : '高度'}
+                  value={heightValue}
+                  position="right"
+                  onChange={changeHeight}
+                />
+              ) : null}
               <DimensionHandle
-                label="Height"
-                value={params.height}
-                position="right"
-                onChange={(value) => setSize('height', value)}
-              />
-              <DimensionHandle
-                label="Width"
+                label="宽度"
                 value={params.width}
                 position="bottom"
                 onChange={(value) => setSize('width', value)}
@@ -305,13 +453,37 @@ export default function App() {
           ) : null}
 
           <div className="stage-info">
-            <span className="stage-chip" title={params.stackable ? '含 1 mm 堆叠唇边的总高' : undefined}>
-              Tray {round(params.width, 1)} × {round(params.depth, 1)} × {round(trayHeight, 1)} mm
+            <span
+              className="stage-chip"
+              title={params.stackable && !isOrganizer && !isZones ? '含 1 mm 堆叠唇边的总高' : undefined}
+            >
+              {isZones
+                ? `分区盒 ${round(params.width, 1)} × ${round(params.depth, 1)} × ${round(
+                    trayHeight,
+                    1,
+                  )} mm`
+                : isOrganizer
+                  ? `收纳盒 ${round(params.width, 1)} × ${round(organizerDepth, 1)} × ${round(
+                      organizerHeight,
+                      1,
+                    )} mm`
+                  : `托盘 ${round(params.width, 1)} × ${round(params.depth, 1)} × ${round(
+                      trayHeight,
+                      1,
+                    )} mm`}
             </span>
+            {isOrganizer ? (
+              <span className="stage-chip">{organizer.layers.length} 层 · 可自由组合</span>
+            ) : null}
+            {isZones ? (
+              <span className="stage-chip">
+                {result?.zoneParts.length ?? 0} 个分区 · 一体成型
+              </span>
+            ) : null}
             {boxSummary ? <span className="stage-chip">{boxSummary}</span> : null}
             {result ? (
               <span className="stage-chip subtle">
-                {result.parts.length} objects · {Math.round(result.durationMs)} ms
+                {result.parts.length} 个对象 · {Math.round(result.durationMs)} ms
               </span>
             ) : null}
           </div>

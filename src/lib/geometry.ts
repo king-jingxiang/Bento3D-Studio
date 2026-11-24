@@ -4,13 +4,17 @@ import type {
   BuildResult,
   GridState,
   HoleShape,
+  OrganizerConfig,
   Params,
   PartInfo,
   PartMesh,
+  ZonesConfig,
 } from '../types';
 import { HOLE_MARGIN, LIMITS, clamp, round } from '../types';
 import { layoutCells } from './grid';
 import { buildTextCS, measureText, sanitizeLabelText } from './font';
+import { buildOrganizer } from './organizer';
+import { buildZones } from './zones';
 import {
   WasmScope,
   extrudeBetween,
@@ -648,15 +652,81 @@ export async function buildModel(
   params: Params,
   grid: GridState,
   mode: AppMode,
+  organizer: OrganizerConfig,
+  zones: ZonesConfig,
 ): Promise<BuildResult> {
   const start = performance.now();
   const wasm = await getManifoldModule();
   const { clean, warnings } = sanitize(params);
-  const label = buildLabelLayout(params, clean);
   const parts: PartInfo[] = [];
   let tray: PartInfo | null = null;
   let box: PartInfo | null = null;
   let lid: PartInfo | null = null;
+  let layers: PartInfo[] = [];
+  let zoneBody: PartInfo | null = null;
+  let zoneParts: PartInfo[] = [];
+  let zonesTotalHeight = 0;
+  let trayTotalHeight = clean.height + (params.stackable ? 1 : 0);
+  let stackTotalHeight = clean.height * params.box.trayCount + (params.stackable ? 1 : 0);
+
+  if (mode === 'zones') {
+    const built = buildZones(params, grid, zones, wasm);
+    zoneBody = built.body;
+    zoneParts = built.parts;
+    zonesTotalHeight = built.totalHeight;
+    if (built.body) {
+      parts.push(built.body);
+    } else {
+      parts.push(...built.parts);
+    }
+    for (const warning of built.warnings) {
+      if (!warnings.includes(warning)) warnings.push(warning);
+    }
+    return {
+      parts,
+      tray,
+      box,
+      lid,
+      layers,
+      zoneBody,
+      zoneParts,
+      zonesTotalHeight,
+      trayTotalHeight: zonesTotalHeight,
+      stackTotalHeight: zonesTotalHeight,
+      warnings,
+      durationMs: performance.now() - start,
+    };
+  }
+
+  if (mode === 'organizer') {
+    const built = buildOrganizer(params, organizer, wasm);
+    layers = built.parts;
+    parts.push(...built.parts);
+    trayTotalHeight = built.totalHeight;
+    stackTotalHeight = built.totalHeight;
+    for (const warning of built.warnings) {
+      if (!warnings.includes(warning)) warnings.push(warning);
+    }
+    if (parts.length === 0) {
+      warnings.push('未能生成任何收纳层，请调整尺寸或分格。');
+    }
+    return {
+      parts,
+      tray,
+      box,
+      lid,
+      layers,
+      zoneBody,
+      zoneParts,
+      zonesTotalHeight,
+      trayTotalHeight,
+      stackTotalHeight,
+      warnings,
+      durationMs: performance.now() - start,
+    };
+  }
+
+  const label = buildLabelLayout(params, clean);
 
   const cellSizes = layoutCells(grid, clean.width, clean.depth, clean.thickness);
   if (cellSizes.some((cell) => cell.x1 - cell.x0 < 3 || cell.y1 - cell.y0 < 3)) {
@@ -671,8 +741,7 @@ export async function buildModel(
     warnings.push(`托盘生成失败：${(error as Error).message}`);
   }
 
-  const stackTotalHeight =
-    clean.height * params.box.trayCount + (params.stackable ? 1 : 0);
+  stackTotalHeight = clean.height * params.box.trayCount + (params.stackable ? 1 : 0);
 
   if (tray && mode === 'set') {
     try {
@@ -699,7 +768,11 @@ export async function buildModel(
     tray,
     box,
     lid,
-    trayTotalHeight: clean.height + (params.stackable ? 1 : 0),
+    layers,
+    zoneBody,
+    zoneParts,
+    zonesTotalHeight,
+    trayTotalHeight,
     stackTotalHeight,
     warnings,
     durationMs,

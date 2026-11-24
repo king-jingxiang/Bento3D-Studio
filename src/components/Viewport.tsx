@@ -86,6 +86,23 @@ function rebuildContent(
   disposeGroup(ctx.content);
   if (!result) return;
 
+  if (mode === 'zones') {
+    const body = result.zoneBody ?? result.parts[0];
+    if (body) ctx.content.add(partObject(body));
+    return;
+  }
+
+  if (mode === 'organizer') {
+    for (const part of result.parts) {
+      const mesh = partObject(part);
+      if (part.offset) {
+        mesh.position.set(part.offset.x, part.offset.y, part.offset.z);
+      }
+      ctx.content.add(mesh);
+    }
+    return;
+  }
+
   if (mode === 'set' && result.box) {
     const box = result.box;
     const boxMesh = partObject(box);
@@ -245,7 +262,7 @@ export function Viewport({ result, mode, params, explode, busy }: ViewportProps)
     const ctx = ctxRef.current;
     if (!ctx) return;
     rebuildContent(ctx, result, mode, params, explode);
-    const fitKey = `${mode}-${result?.parts.length ?? 0}-${Boolean(result?.box)}-${Boolean(result?.lid)}`;
+    const fitKey = `${mode}-${result?.parts.length ?? 0}-${Boolean(result?.box)}-${Boolean(result?.lid)}-${Boolean(result?.zoneBody)}`;
     if (fitKey !== lastFitKey.current) {
       lastFitKey.current = fitKey;
       requestAnimationFrame(() => fitCamera(ctx));
